@@ -28,6 +28,8 @@ async function run() {
     try {
         const appointmentOptionsCollection = client.db('doctorsPortal').collection('appointmentOptions');
         const bookingCollection = client.db('doctorsPortal').collection('bookings');
+        const usersCollection = client.db('doctorsPortal').collection('users');
+
         app.get('/appointmentOptions', async (req, res) => {
             const date = req.query.date;
             const query = {};
@@ -130,6 +132,13 @@ async function run() {
 
             const result = await bookingCollection.insertOne(booking);
             res.send(result);
+        })
+
+        app.post('/users', async (req, res)=>{
+            const user = req.body;
+            console.log(user)
+            const result = await usersCollection.insertOne(user)
+            res.send(result)
         })
 
     }
