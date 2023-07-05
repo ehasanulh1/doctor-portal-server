@@ -24,12 +24,15 @@ const client = new MongoClient(uri, {
 
 function verifyJwt(req, res, next) {
     const authHeader = req.headers.authorization;
+    console.log(authHeader)
     if (!authHeader) {
         return res.status(401).send('unauthorized access')
     }
     const token = authHeader.split(' ')[1]
+    console.log(token)
 
     jwt.verify(token, process.env.ACCESS_TOKEN, function (err, decoded) {
+        console.log(token, err, decoded, 'jwt verify')
         if (err) {
             return res.status(401).send({ message: 'forbidden access' })
         }
@@ -113,7 +116,7 @@ async function run() {
         })
 
         /**
-        * API Naming COnvention
+        * API Naming Convention
         * app.get('/bookings')
         * app.get('/bookings/:id')
         * app.post('/bookings')
@@ -126,11 +129,10 @@ async function run() {
             const email = req.query.email;
             const decodedEmail = req.decoded.email;
 
-            if(email !== decodedEmail){
+            if (email !== decodedEmail) {
                 return res.status(401).send({ message: 'forbidden access' })
             }
 
-            console.log('token', req.headers.authorization)
             const query = { email: email }
             const bookings = await bookingCollection.find(query).toArray();
             res.send(bookings)
@@ -160,19 +162,19 @@ async function run() {
             const email = req.query.email;
             const query = { email: email }
             const user = await usersCollection.findOne(query)
+            console.log(user)
             if (user) {
                 const token = jwt.sign({ email }, process.env.ACCESS_TOKEN, { expiresIn: '1h' })
-                res.send({ accessToken: token })
+                return res.send({ accessToken: token })
             }
+            console.log('/jwt')
             res.status(403).send({ accessToken: '' })
 
         })
 
         app.post('/users', async (req, res) => {
             const user = req.body;
-            console.log(user)
             const result = await usersCollection.insertOne(user);
-            console.log(result)
             res.send(result)
         })
 
