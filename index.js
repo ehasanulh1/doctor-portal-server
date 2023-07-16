@@ -1,14 +1,17 @@
 const express = require('express');
 const cors = require('cors');
-const { MongoClient, ServerApiVersion } = require('mongodb');
-require('dotenv').config();
+const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 const jwt = require('jsonwebtoken');
-const app = express();
+require('dotenv').config();
+
 const port = process.env.PORT || 5000;
+
+const app = express();
 
 //middleware
 app.use(cors());
 app.use(express.json());
+
 
 
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.w1kojzp.mongodb.net/?retryWrites=true&w=majority`;
@@ -22,17 +25,16 @@ const client = new MongoClient(uri, {
     }
 });
 
-function verifyJwt(req, res, next) {
+function verifyJWT(req, res, next) {
     const authHeader = req.headers.authorization;
-    console.log(authHeader)
+
     if (!authHeader) {
         return res.status(401).send('unauthorized access')
     }
+
     const token = authHeader.split(' ')[1]
-    console.log(token)
 
     jwt.verify(token, process.env.ACCESS_TOKEN, function (err, decoded) {
-        console.log(token, err, decoded, 'jwt verify')
         if (err) {
             return res.status(401).send({ message: 'forbidden access' })
         }
@@ -41,11 +43,24 @@ function verifyJwt(req, res, next) {
     })
 }
 
+
 async function run() {
     try {
         const appointmentOptionsCollection = client.db('doctorsPortal').collection('appointmentOptions');
         const bookingCollection = client.db('doctorsPortal').collection('bookings');
         const usersCollection = client.db('doctorsPortal').collection('users');
+        const doctorsCollection = client.db('doctorsPortal').collection('doctors');
+
+        // NOTE: make sure you use verifyAdmin after verifyJWT
+        const verifyAdmin = async (req, res, next) => {
+            const decodedEmail = req.decoded.email;
+            const query = { email: decodedEmail };
+            const user = await usersCollection.findOne(query);
+            if (user?.role !== 'admin') {
+                return res.status(403).send({ message: 'forbidden access' })
+            }
+            next()
+        }
 
         // this api is not used in client side.
         app.get('/appointmentOptions', async (req, res) => {
@@ -115,6 +130,12 @@ async function run() {
             res.send(options);
         })
 
+        app.get('/appointmentSpecialty', async (req, res) => {
+            const query = {};
+            const result = await appointmentOptionsCollection.find(query).project({ name: 1 }).toArray();
+            res.send(result);
+        })
+
         /**
         * API Naming Convention
         * app.get('/bookings')
@@ -125,7 +146,7 @@ async function run() {
         */
 
 
-        app.get('/bookings', verifyJwt, async (req, res) => {
+        app.get('/bookings', verifyJWT, async (req, res) => {
             const email = req.query.email;
             const decodedEmail = req.decoded.email;
 
@@ -140,7 +161,6 @@ async function run() {
 
         app.post('/bookings', async (req, res) => {
             const booking = req.body;
-            console.log(booking)
             const query = {
                 appointmentDate: booking.appointmentDate,
                 email: booking.email,
@@ -162,20 +182,64 @@ async function run() {
             const email = req.query.email;
             const query = { email: email }
             const user = await usersCollection.findOne(query)
-            console.log(user)
+            // console.log(email, query, user)
             if (user) {
                 const token = jwt.sign({ email }, process.env.ACCESS_TOKEN, { expiresIn: '1h' })
                 return res.send({ accessToken: token })
             }
             console.log('/jwt')
             res.status(403).send({ accessToken: '' })
+        })
 
+        app.get('/users', async (req, res) => {
+            const query = {};
+            const users = await usersCollection.find(query).toArray();
+            res.send(users);
+        });
+
+        app.get('/users/admin/:email', async (req, res) => {
+            const email = req.params.email;
+            const query = { email }
+            const user = await usersCollection.findOne(query)
+            res.send({ isAdmin: user?.role === 'admin' });
         })
 
         app.post('/users', async (req, res) => {
             const user = req.body;
             const result = await usersCollection.insertOne(user);
             res.send(result)
+        });
+
+        app.put('/users/admin/:id', verifyJWT, verifyAdmin, async (req, res) => {
+            const id = req.params.id;
+            const filter = { _id: new ObjectId(id) }
+            const options = { upsert: true };
+            const updateDoc = {
+                $set: {
+                    role: 'admin'
+                }
+            }
+            const result = await usersCollection.updateOne(filter, updateDoc, options)
+            res.send(result);
+        })
+
+        app.get('/doctors', verifyJWT, verifyAdmin, async (req, res) => {
+            const query = {};
+            const result = await doctorsCollection.find(query).toArray()
+            res.send(result);
+        })
+
+        app.post('/doctors', verifyJWT, verifyAdmin, async (req, res) => {
+            const doctor = req.body;
+            const result = await doctorsCollection.insertOne(doctor);
+            res.send(result);
+        });
+
+        app.delete('/doctors/:id', verifyJWT, verifyAdmin, async (req, res) => {
+            const id = req.params.id;
+            const filter = { _id: new ObjectId(id) }
+            const result = await doctorsCollection.deleteOne(filter)
+            res.send(result);
         })
 
     }
